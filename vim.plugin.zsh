@@ -61,9 +61,9 @@ _vi_mode_set_cursor() {
     local cursor_code="$1"
     if [[ -n "$TMUX" ]] || [[ "$TERM" == screen* ]]; then
         # tmux/screen escape sequence wrapping
-        printf '\ePtmux;\e%s\e\\' "$cursor_code"
+        printf '\ePtmux;\e%s\e\\' "$cursor_code" >/dev/tty
     else
-        printf '%s' "$cursor_code"
+        printf '%s' "$cursor_code" >/dev/tty
     fi
 }
 
@@ -129,7 +129,9 @@ zle -N zle-line-finish
 
 # Set cursor on startup and for each new prompt
 _vi_mode_set_cursor "$VI_MODE_CURSOR_INSERT"
-preexec() { _vi_mode_set_cursor "$VI_MODE_CURSOR_INSERT"; }
+preexec() {
+    _vi_mode_set_cursor "$VI_MODE_CURSOR_INSERT"
+}
 
 # =============================================================================
 # BASIC VI KEYBINDINGS AND FIXES
@@ -217,29 +219,60 @@ if [[ "$VI_MODE_ENABLE_TEXT_OBJECTS" == "true" ]]; then
     autoload -Uz select-bracketed select-quoted
     zle -N select-quoted
     zle -N select-bracketed
-    
+		
     # Bind text objects for quotes and brackets
     for mode in viopp visual; do
         # Quote text objects: ', ", `
         for char in {a,i}{\',\",\`}; do
             bindkey -M "$mode" -- "$char" select-quoted
         done
-        
+				
         # Bracket text objects: (), [], {}, <>, plus b and B for () and {}
         for char in {a,i}${(s..)^:-'()[]{}<>bB'}; do
             bindkey -M "$mode" -- "$char" select-bracketed
         done
     done
-    
-    # Custom word text objects
-    autoload -Uz select-word-style
-    select-word-style default
-    zle -N select-a-word
-    zle -N select-in-word
-    bindkey -M viopp 'aw' select-a-word
-    bindkey -M viopp 'iw' select-in-word
-    bindkey -M visual 'aw' select-a-word
-    bindkey -M visual 'iw' select-in-word
+		
+    # Custom word text objects - create our own functions
+    _vi_select_in_word() {
+        local WORDCHARS_OLD="$WORDCHARS"
+        WORDCHARS=""
+        zle vi-backward-word
+        local start=$CURSOR
+        zle vi-forward-word-end
+        local end=$((CURSOR + 1))
+        WORDCHARS="$WORDCHARS_OLD"
+        CURSOR=$start
+        MARK=$end
+        zle set-mark-command
+    }
+		
+    _vi_select_a_word() {
+        local WORDCHARS_OLD="$WORDCHARS"
+        WORDCHARS=""
+        zle vi-backward-word
+        # Include preceding whitespace
+        while [[ $CURSOR -gt 0 && "${BUFFER[$CURSOR]}" == [[:space:]] ]]; do
+            ((CURSOR--))
+        done
+        if [[ "${BUFFER[$CURSOR]}" != [[:space:]] ]]; then
+            ((CURSOR++))
+        fi
+        local start=$CURSOR
+        zle vi-forward-word
+        local end=$CURSOR
+        WORDCHARS="$WORDCHARS_OLD"
+        CURSOR=$start
+        MARK=$end
+        zle set-mark-command
+    }
+		
+    zle -N _vi_select_in_word
+    zle -N _vi_select_a_word
+    bindkey -M viopp 'iw' _vi_select_in_word
+    bindkey -M viopp 'aw' _vi_select_a_word
+    bindkey -M visual 'iw' _vi_select_in_word
+    bindkey -M visual 'aw' _vi_select_a_word
 fi
 
 # =============================================================================
@@ -252,7 +285,7 @@ if [[ "$VI_MODE_ENABLE_SURROUND" == "true" ]]; then
     zle -N delete-surround surround
     zle -N add-surround surround
     zle -N change-surround surround
-    
+		
     # Bind surround commands
     bindkey -M vicmd 'cs' change-surround
     bindkey -M vicmd 'ds' delete-surround
