@@ -59,11 +59,15 @@ VI_MODE_ENABLE_EMACS_BINDINGS="${VI_MODE_ENABLE_EMACS_BINDINGS:-true}"
 # Function to safely echo cursor sequences (handles tmux/screen)
 _vi_mode_set_cursor() {
     local cursor_code="$1"
+		
+    # Only set cursor if we're in an interactive terminal
+    [[ -t 0 && -t 1 && -t 2 ]] || return
+		
     if [[ -n "$TMUX" ]] || [[ "$TERM" == screen* ]]; then
         # tmux/screen escape sequence wrapping
-        printf '\ePtmux;\e%s\e\\' "$cursor_code" >/dev/tty
+        print -n "\ePtmux;\e${cursor_code}\e\\"
     else
-        printf '%s' "$cursor_code" >/dev/tty
+        print -n "$cursor_code"
     fi
 }
 
@@ -235,36 +239,85 @@ if [[ "$VI_MODE_ENABLE_TEXT_OBJECTS" == "true" ]]; then
 		
     # Custom word text objects - create our own functions
     _vi_select_in_word() {
-        local WORDCHARS_OLD="$WORDCHARS"
+        # Save current word chars and use default word boundaries
+        local WORDCHARS_SAVE="$WORDCHARS"
         WORDCHARS=""
-        zle vi-backward-word
-        local start=$CURSOR
-        zle vi-forward-word-end
-        local end=$((CURSOR + 1))
-        WORDCHARS="$WORDCHARS_OLD"
-        CURSOR=$start
-        MARK=$end
-        zle set-mark-command
+				
+        # Find word boundaries
+        local pos=$CURSOR
+        # Move to start of word
+        while [[ $pos -gt 0 && "${BUFFER[pos]}" != [[:space:]] ]]; do
+            ((pos--))
+        done
+        # Skip any leading whitespace
+        while [[ $pos -lt ${#BUFFER} && "${BUFFER[pos+1]}" == [[:space:]] ]]; do
+            ((pos++))
+        done
+        local word_start=$pos
+				
+        # Move to end of word
+        pos=$CURSOR
+        while [[ $pos -lt ${#BUFFER} && "${BUFFER[pos+1]}" != [[:space:]] ]]; do
+            ((pos++))
+        done
+        local word_end=$pos
+				
+        # Restore WORDCHARS
+        WORDCHARS="$WORDCHARS_SAVE"
+				
+        # Set the region
+        CURSOR=$word_start
+        MARK=$word_end
+        if [[ $KEYMAP == "viopp" ]]; then
+            # In operator pending mode, we need to set the selection differently
+            CURSOR=$word_start
+            zle set-mark-command
+            CURSOR=$word_end
+        fi
     }
 		
     _vi_select_a_word() {
-        local WORDCHARS_OLD="$WORDCHARS"
+        # Save current word chars
+        local WORDCHARS_SAVE="$WORDCHARS"
         WORDCHARS=""
-        zle vi-backward-word
-        # Include preceding whitespace
-        while [[ $CURSOR -gt 0 && "${BUFFER[$CURSOR]}" == [[:space:]] ]]; do
-            ((CURSOR--))
+				
+        # Find word with surrounding whitespace
+        local pos=$CURSOR
+        # Move to start of word (including leading whitespace)
+        while [[ $pos -gt 0 && "${BUFFER[pos]}" == [[:space:]] ]]; do
+            ((pos--))
         done
-        if [[ "${BUFFER[$CURSOR]}" != [[:space:]] ]]; then
-            ((CURSOR++))
+        while [[ $pos -gt 0 && "${BUFFER[pos]}" != [[:space:]] ]]; do
+            ((pos--))
+        done
+        # Include trailing whitespace if we're not at start
+        if [[ $pos -gt 0 ]]; then
+            ((pos++))
         fi
-        local start=$CURSOR
-        zle vi-forward-word
-        local end=$CURSOR
-        WORDCHARS="$WORDCHARS_OLD"
-        CURSOR=$start
-        MARK=$end
-        zle set-mark-command
+        local word_start=$pos
+				
+        # Move to end of word (including trailing whitespace)
+        pos=$CURSOR
+        while [[ $pos -lt ${#BUFFER} && "${BUFFER[pos+1]}" != [[:space:]] ]]; do
+            ((pos++))
+        done
+        while [[ $pos -lt ${#BUFFER} && "${BUFFER[pos+1]}" == [[:space:]] ]]; do
+            ((pos++))
+        done
+        local word_end=$pos
+				
+        # Restore WORDCHARS
+        WORDCHARS="$WORDCHARS_SAVE"
+				
+        # Set the region
+        CURSOR=$word_start
+        MARK=$word_end
+        if [[ $KEYMAP == "viopp" ]]; then
+            # In operator pending mode
+            CURSOR=$word_start
+            zle set-mark-command
+            CURSOR=$word_end
+        fi
     }
 		
     zle -N _vi_select_in_word
