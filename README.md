@@ -262,12 +262,12 @@ Text objects work with operations like `d`, `c`, `y`:
 
 Inspired by vim-surround plugin:
 
-| Command            | Action                       | Example                             |
-| ------------------ | ---------------------------- | ----------------------------------- |
-| `ys<motion><char>` | Add surrounding character    | `ysiw"` → surround word with quotes |
-| `cs<old><new>`     | Change surrounding character | `cs"'` → change " to '              |
-| `ds<char>`         | Delete surrounding character | `ds(` → remove parentheses          |
-| `S<char>`          | Surround selection (visual)  | Select text, `S"` → add quotes      |
+| Command            | Action                       | Example                            |
+| ------------------ | ---------------------------- | ---------------------------------- |
+| `ys<motion><char>` | Add surrounding character    | `ysw"` → surround word with quotes |
+| `cs<old><new>`     | Change surrounding character | `cs"'` → change " to '             |
+| `ds<char>`         | Delete surrounding character | `ds(` → remove parentheses         |
+| `S<char>`          | Surround selection (visual)  | Select text, `S"` → add quotes     |
 
 **Examples:**
 
